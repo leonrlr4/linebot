@@ -51,7 +51,7 @@ def callback():
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    # return 'OK'
+    return 'OK'
     message_text = str(event.message.text).lower()
     user_id = event.source.user_id
 
