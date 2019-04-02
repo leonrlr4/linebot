@@ -1,65 +1,95 @@
 from line_bot_api import *
 from urllib.parse import parse_qsl
+from models.appointments import Appointment
+from db import db_session
 import datetime
 
 def appointment_event(event):
-    carousel_template_message = TemplateSendMessage(
-        alt_text='Carousel template',
-        template=CarouselTemplate(
-            columns=[
-                CarouselColumn(
-                    thumbnail_image_url='https://i.imgur.com/achPYfh.jpg',
-                    title='Hair cut && Style',
-                    text='請選擇服務',
-                    actions=[
-                        PostbackAction(
-                            label='剪頭髮',
-                            text='剪頭髮',
-                            data='action=step2&service=剪頭髮'
-                        ),
-                        PostbackAction(
-                            label='洗頭髮',
-                            text='洗頭髮',
-                            data='action=step2&service=洗頭髮'
-                        ),
-                        PostbackAction(
-                            label='洗加剪',
-                            text='洗加剪',
-                            data='action=step2&service=洗加剪'
-                        )
-                    ]
-                ),
-                CarouselColumn(
-                    thumbnail_image_url='https://i.imgur.com/SQnGl6n.jpg',
-                    title='造型 && 按摩',
-                    text='請選擇服務',
-                    actions=[
-                        PostbackAction(
-                            label='臉部按摩',
-                            text='臉部按摩',
-                            data='action=step2&service=臉部按摩'
-                        ),
-                        PostbackAction(
-                            label='燙髮',
-                            text='燙髮',
-                            data='action=step2&service=燙髮'
-                        ),
-                        PostbackAction(
-                            label='染髮',
-                            text='染髮',
-                            data='action=step2&service=染髮'
-                        )
-                    ]
-                )
-            ]
-        )
-    )
+    user_id = event.source.user_id
 
-    line_bot_api.reply_message(
-        reply_token=event.reply_token,
-        messages=[TextSendMessage(text='您想要預約什麼服務呢'),
-                carousel_template_message]
-    )
+    appointment = Appointment.query.filter(
+        Appointment.user_id == user_id).first()
+    if not appointment:
+        carousel_template_message = TemplateSendMessage(
+            alt_text='Carousel template',
+            template=CarouselTemplate(
+                columns=[
+                    CarouselColumn(
+                        thumbnail_image_url='https://i.imgur.com/achPYfh.jpg',
+                        title='Hair cut && Style',
+                        text='請選擇服務',
+                        actions=[
+                            PostbackAction(
+                                label='剪頭髮',
+                                text='剪頭髮',
+                                data='action=step2&service=剪頭髮'
+                            ),
+                            PostbackAction(
+                                label='洗頭髮',
+                                text='洗頭髮',
+                                data='action=step2&service=洗頭髮'
+                            ),
+                            PostbackAction(
+                                label='洗加剪',
+                                text='洗加剪',
+                                data='action=step2&service=洗加剪'
+                            )
+                        ]
+                    ),
+                    CarouselColumn(
+                        thumbnail_image_url='https://i.imgur.com/SQnGl6n.jpg',
+                        title='造型 && 按摩',
+                        text='請選擇服務',
+                        actions=[
+                            PostbackAction(
+                                label='臉部按摩',
+                                text='臉部按摩',
+                                data='action=step2&service=臉部按摩'
+                            ),
+                            PostbackAction(
+                                label='燙髮',
+                                text='燙髮',
+                                data='action=step2&service=燙髮'
+                            ),
+                            PostbackAction(
+                                label='染髮',
+                                text='染髮',
+                                data='action=step2&service=染髮'
+                            )
+                        ]
+                    )
+                ]
+            )
+        )
+        line_bot_api.reply_message(
+            reply_token=event.reply_token,
+            messages=[TextSendMessage(text='您想要預約什麼服務呢'),
+                    carousel_template_message]
+        )
+    else:
+        appointment_datetime_text = appointment.appointment_datetime.strftime(
+            '您預約的日為 %Y-%m-%d， 時間為%H:%M')
+        confirm_template_message = TemplateSendMessage(
+            alt_text='Confirm template',
+            template=ConfirmTemplate(
+                text='您確定要取消預約嗎',
+                actions=[
+                    MessageAction(
+                        label='yes',
+                        text='是，我要取消'
+                    ),
+                    MessageAction(
+                        label='no',
+                        text='不， 算了'
+                    )
+                ]
+            )
+        )
+        line_bot_api.reply_message(
+            reply_token = event.reply_token,
+            messages=[TextSendMessage(text=appointment_datetime_text),
+            confirm_template_message]
+        )
 
 
 def appointment_datetime_event(event):
@@ -89,6 +119,7 @@ def appointment_datetime_event(event):
         )
     )
 
+
     line_bot_api.reply_message(
         reply_token = event.reply_token,
         messages=[image_carousel_template_message]
@@ -98,6 +129,14 @@ def appointment_datetime_event(event):
 def appointment_complete_event(event):
     appointment_service = dict(parse_qsl(event.postback.data)).get('service')
     appointment_datetime = datetime.datetime.strptime(event.postback.params.get('datetime'), '%Y-%m-%dT%H:%M')
+    user_id = event.source.user_id
+
+    appointment = Appointment(user_id=user_id,
+                                appointment_service=appointment_service,
+                                appointment_datetime=appointment_datetime)
+    db_session.add(appointment)
+    db_session.commit()
+
     profile_name = line_bot_api.get_profile(event.source.user_id).display_name
 
     appointment_service_text = '親愛的 {} 您已完成{} 服務的預約'.format(profile_name, appointment_service)
@@ -108,3 +147,16 @@ def appointment_complete_event(event):
         messages=[TextSendMessage(text=appointment_service_text),
                 TextSendMessage(text=appointment_datetime_text)]
     )
+
+def appointment_cancel_event(event):
+    user_id = event.source.user_id
+    appointment = Appointment.query.filter(Appointment.user_id ==user_id).first()
+
+    if appointment:
+        db_session.delete(appointment)
+        db_session.commit()
+
+        line_bot_api.reply_message(
+            reply_token = event.reply_token,
+            messages = [TextSendMessage(text = '您已成功取消預約')]
+        )
